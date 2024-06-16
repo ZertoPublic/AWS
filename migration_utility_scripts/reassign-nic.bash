@@ -90,11 +90,24 @@ logToFileOnly () {
 
 getInstanceFilteredAwsTags () {
   local instance="$1"
-  local tags=$(jq -c '.Reservations[].Instances[].Tags[]?' <<< "$instance")
-  local filtered_tags=$(jq -c 'select(.Key | test("^aws"; "i") | not)' <<< "$tags")
-  local filtered_tags_line=$(echo "$filtered_tags" | tr -d '\n')
+  local original_tags=$(jq -c '.Reservations[].Instances[].Tags[]?' <<< "$instance")
+  local tags=$(addPrefixToAwsTags "$original_tags")
+  echo "$tags"
+}
 
-  echo "$filtered_tags_line"
+addPrefixToAwsTags () {
+  local tags="$1"
+  
+  local modified_tags=$(jq -c '
+    if .Key | test("^aws:"; "i") then 
+      .Key = "ZERTO:" + .Key
+    else 
+      . 
+    end' <<< "$tags")
+
+  local modified_tags_line=$(echo "$modified_tags" | tr -d '\n')
+
+  echo "$modified_tags_line"
 }
 
 fetchVolumeMetadata() {
@@ -178,15 +191,16 @@ fetchVolumesTags() {
         
         # Check if Tags array exists and is not null
         if jq -e '.Tags // empty | length > 0' <<< "$volume" >/dev/null; then
-            local tags=$(jq -c '.Tags | map({Key: .Key, Value: .Value})' <<< "$volume")
+            local original_tags=$(jq -c '.Tags' <<< "$volume")
+            local tags=$(addPrefixToAwsTags $(jq -c '.[]' <<< "$original_tags"))
+
             # Append new object to the array
-            zca_volumes_tags=$(jq --arg device_name "$device_name" --argjson tags "$tags" \
+            zca_volumes_tags=$(jq --arg device_name "$device_name" --argjson tags "${tags[@]}" \
                 '.Volumes += [{DeviceName: $device_name, Tags: $tags}]' <<< "$zca_volumes_tags")
         fi
     done < <(jq -c '.Volumes[]' <<< "$volumes_info")
 
     zca_volumes_tags=$(tr -d '\n' <<< "$zca_volumes_tags")
-
     echo "$zca_volumes_tags"
 }
 
