@@ -419,7 +419,7 @@ waitTillAmiCreated () {
   local instance_ami_image_id="$2"
   
   # Timeout in seconds
-  timeout=1200
+  timeout=1800
   start_time=$SECONDS
   # Wait for the AMI to be available
   while true; do
